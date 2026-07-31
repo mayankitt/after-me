@@ -5,6 +5,10 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+# Least-privilege permissions — the deploy job overrides where needed
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy
