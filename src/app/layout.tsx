@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Providers from "./providers";
 
 export const metadata: Metadata = {
   title: "After Me - Digital Legacy Vault",
@@ -28,11 +29,10 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="After Me" />
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
       </head>
-      <body
-        className="antialiased bg-gray-900 text-white"
-      >
-        {children}
+      <body className="antialiased bg-gray-900 text-white">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
 }
+

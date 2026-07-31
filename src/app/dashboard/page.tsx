@@ -2,25 +2,14 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  country: string;
-  emergencyContact: string;
-  emergencyEmail: string;
-  createdAt: string;
-}
-
 interface Document {
-  id: string;
+  key: string;
   name: string;
-  type: string;
-  category: string;
   uploadDate: string;
-  isRequired: boolean;
+  size: number;
 }
 
 const documentSuggestions: Record<string, Array<{category: string, documents: string[]}>> = {
@@ -51,33 +40,25 @@ const documentSuggestions: Record<string, Array<{category: string, documents: st
 };
 
 export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null);
+  const { data: session, status } = useSession();
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const userData = localStorage.getItem('afterme_user');
-    const vaultData = localStorage.getItem('afterme_vault');
-    
-    if (!userData) {
-      router.push('/auth/login');
+    if (status === 'unauthenticated') {
+      router.push('/api/auth/signin');
       return;
     }
 
-    setUser(JSON.parse(userData));
-    if (vaultData) {
-      setDocuments(JSON.parse(vaultData));
+    if (status === 'authenticated') {
+      fetch('/api/vault/documents')
+        .then((res) => res.json())
+        .then((data) => setDocuments(data.documents ?? []))
+        .catch(console.error);
     }
-    setLoading(false);
-  }, [router]);
+  }, [status, router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('afterme_user');
-    router.push('/');
-  };
-
-  if (loading) {
+  if (status === 'loading') {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-white">Loading...</div>
@@ -85,9 +66,9 @@ export default function Dashboard() {
     );
   }
 
-  if (!user) return null;
+  if (!session) return null;
 
-  const suggestions = documentSuggestions[user.country] || documentSuggestions.default;
+  const suggestions = documentSuggestions.default;
   const totalSuggested = suggestions.reduce((acc, cat) => acc + cat.documents.length, 0);
   const completedCount = documents.length;
   const completionPercentage = totalSuggested > 0 ? Math.round((completedCount / totalSuggested) * 100) : 0;
@@ -99,9 +80,9 @@ export default function Dashboard() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-white">After Me Dashboard</h1>
           <div className="flex items-center space-x-4">
-            <span className="text-gray-300">Welcome, {user.name}</span>
+            <span className="text-gray-300">Welcome, {session.user?.name ?? session.user?.email}</span>
             <button
-              onClick={handleLogout}
+              onClick={() => signOut({ callbackUrl: '/' })}
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm"
             >
               Logout
@@ -123,11 +104,11 @@ export default function Dashboard() {
               <div className="w-full bg-gray-700 rounded-full h-2">
                 <div 
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                  style={{ width: `${completionPercentage}%` }}
+                  style={{ width: `${Math.min(completionPercentage, 100)}%` }}
                 ></div>
               </div>
             </div>
-            <div className="text-2xl font-bold text-white">{completionPercentage}%</div>
+            <div className="text-2xl font-bold text-white">{Math.min(completionPercentage, 100)}%</div>
           </div>
         </div>
 
@@ -163,29 +144,19 @@ export default function Dashboard() {
 
         {/* Document Suggestions */}
         <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">
-            Suggested Documents for {user.country === 'US' ? 'United States' : 
-            user.country === 'UK' ? 'United Kingdom' : 
-            user.country === 'CA' ? 'Canada' : 'Your Country'}
-          </h2>
+          <h2 className="text-xl font-semibold text-white mb-4">Suggested Documents</h2>
           
           <div className="grid md:grid-cols-2 gap-6">
             {suggestions.map((category, index) => (
               <div key={index} className="bg-gray-700 rounded-lg p-4">
                 <h3 className="font-semibold text-white mb-3">{category.category}</h3>
                 <ul className="space-y-2">
-                  {category.documents.map((doc, docIndex) => {
-                    const isUploaded = documents.some(d => d.name.toLowerCase().includes(doc.toLowerCase()));
-                    return (
-                      <li key={docIndex} className="flex items-center space-x-2 text-sm">
-                        <span className={`w-4 h-4 rounded-full ${isUploaded ? 'bg-green-500' : 'bg-gray-500'}`}></span>
-                        <span className={`${isUploaded ? 'text-green-300' : 'text-gray-300'}`}>
-                          {doc}
-                        </span>
-                        {isUploaded && <span className="text-green-400">✓</span>}
-                      </li>
-                    );
-                  })}
+                  {category.documents.map((doc, docIndex) => (
+                    <li key={docIndex} className="flex items-center space-x-2 text-sm">
+                      <span className="w-4 h-4 rounded-full bg-gray-500"></span>
+                      <span className="text-gray-300">{doc}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}
