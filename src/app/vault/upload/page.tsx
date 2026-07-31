@@ -2,17 +2,8 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-
-interface Document {
-  id: string;
-  name: string;
-  type: string;
-  category: string;
-  uploadDate: string;
-  isRequired: boolean;
-  content?: string;
-}
 
 const categories = [
   'Legal Documents',
@@ -41,66 +32,75 @@ const documentTypes = [
 ];
 
 export default function Upload() {
+  const { status } = useSession();
   const [formData, setFormData] = useState({
     name: '',
     type: '',
     category: '',
-    content: '',
     isRequired: false
   });
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   useEffect(() => {
-    const userData = localStorage.getItem('afterme_user');
-    if (!userData) {
-      router.push('/auth/login');
+    if (status === 'unauthenticated') {
+      router.push('/api/auth/signin');
     }
-  }, [router]);
+  }, [status, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    if (!file) {
+      setError('Please select a file to upload.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const newDocument: Document = {
-        id: Date.now().toString(),
-        name: formData.name,
-        type: formData.type,
-        category: formData.category,
-        content: formData.content,
-        isRequired: formData.isRequired,
-        uploadDate: new Date().toISOString()
-      };
+      const data = new FormData();
+      data.append('file', file);
+      data.append('name', formData.name || file.name);
+      data.append('type', formData.type);
+      data.append('category', formData.category);
+      data.append('isRequired', String(formData.isRequired));
 
-      // Get existing documents
-      const existingDocs = localStorage.getItem('afterme_vault');
-      const documents = existingDocs ? JSON.parse(existingDocs) : [];
-      
-      // Add new document
-      documents.push(newDocument);
-      localStorage.setItem('afterme_vault', JSON.stringify(documents));
+      const res = await fetch('/api/vault/upload', { method: 'POST', body: data });
+
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? 'Upload failed');
+      }
 
       setSuccess(true);
-      setTimeout(() => {
-        router.push('/vault');
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Upload failed:', error);
+      setTimeout(() => router.push('/vault'), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }));
   };
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -131,15 +131,26 @@ export default function Upload() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Document Name *
+                File *
+              </label>
+              <input
+                type="file"
+                required
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-600 file:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Document Name
               </label>
               <input
                 type="text"
                 name="name"
-                required
                 value={formData.name}
                 onChange={handleChange}
-                placeholder="e.g., Last Will and Testament"
+                placeholder="Defaults to filename if left blank"
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -180,23 +191,6 @@ export default function Upload() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Document Content / Notes
-              </label>
-              <textarea
-                name="content"
-                value={formData.content}
-                onChange={handleChange}
-                rows={6}
-                placeholder="Enter important information, account numbers, locations, or any relevant details..."
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-sm text-gray-400 mt-1">
-                For security, avoid storing actual file content. Instead, include references, locations, or instructions.
-              </p>
-            </div>
-
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -211,14 +205,9 @@ export default function Upload() {
               </label>
             </div>
 
-            <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-300 mb-2">🔒 Security Note</h3>
-              <p className="text-blue-200 text-sm">
-                For maximum security, this demo stores information locally in your browser. 
-                In a production environment, all data would be encrypted and stored securely in the cloud 
-                with proper access controls and backup systems.
-              </p>
-            </div>
+            {error && (
+              <div className="text-red-400 text-sm text-center">{error}</div>
+            )}
 
             <div className="flex space-x-4">
               <button
@@ -228,7 +217,7 @@ export default function Upload() {
               >
                 {loading ? 'Uploading...' : 'Upload Document'}
               </button>
-              
+
               <Link
                 href="/vault"
                 className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-md font-medium text-center transition-colors"
@@ -243,11 +232,11 @@ export default function Upload() {
         <div className="mt-8 bg-gray-800 rounded-lg p-6">
           <h3 className="font-semibold text-white mb-4">💡 Quick Tips</h3>
           <ul className="space-y-2 text-sm text-gray-300">
+            <li>• Supported formats: PDF, images, Word documents, and more</li>
+            <li>• Files are stored securely in S3-compatible object storage</li>
+            <li>• Downloads use time-limited pre-signed URLs for security</li>
             <li>• Include location information for physical documents</li>
-            <li>• Add contact details for lawyers, financial advisors, or other professionals</li>
-            <li>• Include account numbers and institution names for financial documents</li>
             <li>• Consider adding expiration dates for time-sensitive documents</li>
-            <li>• Include any special instructions or wishes</li>
           </ul>
         </div>
       </div>
