@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A document uploaded by a user to their vault.
+model Document {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  s3Key       String    @unique @map("s3_key")
+  name        String
+  fileName    String    @map("file_name")
+  type        String
+  category    String
+  contentType String    @map("content_type")
+  size        Int
+  isRequired  Boolean   @default(false) @map("is_required")
+  uploadedAt  DateTime  @default(now()) @map("uploaded_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([userId])
+  @@index([userId, deletedAt])
+  @@map("documents")
+}
+
+/// Append-only audit trail of every security-relevant action.
+/// Rows must never be deleted by the application.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  action    String   // UPLOAD | DOWNLOAD | DELETE | DELETE_ACCOUNT | LOGIN | LOGOUT
+  resource  String?  // S3 key or other resource identifier
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  success   Boolean  @default(true)
+  metadata  Json?    // additional structured context
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

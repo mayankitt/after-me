@@ -6,7 +6,7 @@ export default auth((req: NextAuthRequest) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
 
-  const protectedPaths = ['/dashboard', '/vault'];
+  const protectedPaths = ['/dashboard', '/vault', '/settings'];
   const isProtected = protectedPaths.some((path) =>
     nextUrl.pathname.startsWith(path),
   );
@@ -19,5 +19,5 @@ export default auth((req: NextAuthRequest) => {
 });
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/vault/:path*', '/api/vault/:path*'],
+  matcher: ['/dashboard/:path*', '/vault/:path*', '/api/vault/:path*', '/settings/:path*', '/settings'],
 };

@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 interface Document {
   key: string;
   name: string;
+  type: string;
+  category: string;
   uploadDate: string;
   size: number;
 }
@@ -16,6 +18,8 @@ export default function Vault() {
   const { status } = useSession();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -26,26 +30,45 @@ export default function Vault() {
 
     if (status === 'authenticated') {
       fetch('/api/vault/documents')
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to load documents');
+          return res.json();
+        })
         .then((data) => {
           setDocuments(data.documents ?? []);
         })
-        .catch(console.error)
+        .catch(() => setDeleteError('Failed to load documents. Please refresh the page.'))
         .finally(() => setLoading(false));
     }
   }, [status, router]);
 
   const handleDeleteDocument = async (key: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-    await fetch(`/api/vault/documents?key=${encodeURIComponent(key)}`, {
+    if (!confirm('Are you sure you want to delete this document? This cannot be undone.')) return;
+    setDeleteError(null);
+
+    const res = await fetch(`/api/vault/documents?key=${encodeURIComponent(key)}`, {
       method: 'DELETE',
     });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setDeleteError(body.error ?? 'Failed to delete document. Please try again.');
+      return;
+    }
+
     setDocuments((prev) => prev.filter((doc) => doc.key !== key));
   };
 
   const handleDownload = async (key: string, name: string) => {
+    setDownloadError(null);
+
     const res = await fetch(`/api/vault/download?key=${encodeURIComponent(key)}`);
-    if (!res.ok) return;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setDownloadError(body.error ?? 'Failed to start download. Please try again.');
+      return;
+    }
+
     const { url } = await res.json();
     const a = document.createElement('a');
     a.href = url;
@@ -73,7 +96,7 @@ export default function Vault() {
             <span className="text-2xl font-bold text-white">Secure Vault</span>
           </div>
           <div className="flex items-center space-x-4">
-            <Link 
+            <Link
               href="/vault/upload"
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
             >
@@ -90,13 +113,27 @@ export default function Vault() {
       </header>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Error banners */}
+        {deleteError && (
+          <div className="mb-4 bg-red-900/50 border border-red-600 rounded-lg p-4 flex justify-between items-center">
+            <span className="text-red-300 text-sm">{deleteError}</span>
+            <button onClick={() => setDeleteError(null)} className="text-red-400 hover:text-red-300 ml-4 text-lg leading-none">×</button>
+          </div>
+        )}
+        {downloadError && (
+          <div className="mb-4 bg-red-900/50 border border-red-600 rounded-lg p-4 flex justify-between items-center">
+            <span className="text-red-300 text-sm">{downloadError}</span>
+            <button onClick={() => setDownloadError(null)} className="text-red-400 hover:text-red-300 ml-4 text-lg leading-none">×</button>
+          </div>
+        )}
+
         {/* Documents Grid */}
         {documents.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-6xl mb-4">📄</div>
             <h3 className="text-xl font-semibold text-white mb-2">No Documents Found</h3>
             <p className="text-gray-400 mb-6">You haven&apos;t uploaded any documents yet.</p>
-            <Link 
+            <Link
               href="/vault/upload"
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md inline-block"
             >
@@ -110,13 +147,14 @@ export default function Vault() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <h3 className="font-semibold text-white mb-1">{doc.name}</h3>
+                    <p className="text-xs text-gray-400 mb-1">{doc.category} · {doc.type}</p>
                     <p className="text-sm text-gray-400">
                       {(doc.size / 1024).toFixed(1)} KB
                     </p>
                   </div>
                   <button
                     onClick={() => handleDeleteDocument(doc.key)}
-                    className="text-red-400 hover:text-red-300 text-sm"
+                    className="text-red-400 hover:text-red-300 text-sm ml-2"
                     title="Delete document"
                   >
                     🗑️

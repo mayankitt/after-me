@@ -127,6 +127,19 @@ export default function Home() {
             ))}
           </div>
         </div>
+
+        {/* Footer */}
+        <footer className="mt-16 pt-8 border-t border-gray-700 text-center text-sm text-gray-500 space-x-6">
+          <Link href="/privacy" className="hover:text-gray-300 transition-colors">
+            Privacy Policy
+          </Link>
+          <Link href="/auth/login" className="hover:text-gray-300 transition-colors">
+            Sign In
+          </Link>
+          <Link href="/settings" className="hover:text-gray-300 transition-colors">
+            Account Settings
+          </Link>
+        </footer>
       </div>
     </div>
   );

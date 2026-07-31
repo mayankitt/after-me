@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # npm dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    groups:
+      # Batch non-breaking patch/minor updates together
+      minor-and-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Pin Next.js major versions — upgrade manually with testing
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions versions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5

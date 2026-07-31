@@ -2,17 +2,22 @@ version: '3.8'
 
 services:
   # ─────────────────────────────────────────────
-  # PostgreSQL — Keycloak backing store
+  # PostgreSQL — shared backing store
+  # Hosts both the Keycloak schema and the afterme application schema.
+  # In production, use separate managed PostgreSQL instances (e.g. AWS RDS).
   # ─────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.3-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-keycloak_password}
+      # Create the afterme application database on first start
+      POSTGRES_MULTIPLE_DATABASES: keycloak,afterme
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/pg-init.sh:/docker-entrypoint-initdb.d/pg-init.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U keycloak']
       interval: 10s
@@ -21,21 +26,29 @@ services:
 
   # ─────────────────────────────────────────────
   # Keycloak — identity & access management
+  #
+  # PRODUCTION NOTES:
+  #   • Switch `command` from `start-dev` to `start` and set KC_HOSTNAME,
+  #     KC_HTTPS_CERTIFICATE_FILE, KC_HTTPS_CERTIFICATE_KEY_FILE.
+  #   • Set KC_HTTP_ENABLED: 'false' and terminate TLS at Keycloak or a
+  #     reverse proxy.
+  #   • Replace all default credentials via environment secrets.
   # ─────────────────────────────────────────────
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    image: quay.io/keycloak/keycloak:24.0.5
     restart: unless-stopped
+    # Use 'start' instead of 'start-dev' in production after configuring TLS.
     command: start-dev
     environment:
-      # Admin credentials — change in production
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin_password
+      # Admin credentials — override via .env or secrets manager in production
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD must be set}
       # Database
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak_password
-      # Hostname
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-keycloak_password}
+      # In development only — disable strict hostname checks
       KC_HOSTNAME_STRICT: 'false'
       KC_HTTP_ENABLED: 'true'
     ports:
@@ -53,18 +66,17 @@ services:
   # ─────────────────────────────────────────────
   # MinIO — S3-compatible object storage (local dev)
   #
-  # In production, replace with AWS S3, Cloudflare R2,
-  # Backblaze B2, or any S3-compatible provider by
-  # updating the S3_* environment variables in .env.local.
+  # In production, replace with AWS S3, Cloudflare R2, Backblaze B2,
+  # or any S3-compatible provider by updating the S3_* environment variables.
   # No application code changes are required.
   # ─────────────────────────────────────────────
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin_password
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     ports:
       - '9000:9000'   # S3 API
       - '9001:9001'   # MinIO Console UI
@@ -81,17 +93,22 @@ services:
   # Creates the 'afterme-vault' bucket if it doesn't exist
   # ─────────────────────────────────────────────
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-06-12T14-34-03Z
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     entrypoint: >
       /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin_password &&
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
         mc mb --ignore-existing local/afterme-vault &&
+        mc anonymous set none local/afterme-vault &&
         echo 'Bucket ready.'
       "
 
 volumes:
   postgres_data:
   minio_data:
+

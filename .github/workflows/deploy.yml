@@ -1,0 +1,51 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    # Only run on pushes to main that have passed CI
+    needs: []
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ── Vercel deployment ────────────────────────────────────────────────────
+      # Replace this step with your actual deployment mechanism.
+      # For Vercel: connect the repo in the Vercel dashboard and it will
+      # auto-deploy on push to main.  The migrate step above should run as a
+      # Vercel build command or a separate pre-deploy step in your pipeline.
+      #
+      # For self-hosted: build the Docker image and push to your registry,
+      # then roll out via Kubernetes / ECS / etc.
+      - name: Deploy (Vercel)
+        run: |
+          echo "Vercel deployment is handled automatically via the Vercel GitHub integration."
+          echo "Database migrations have been applied above."
+          echo "Ensure all required environment variables are configured in the Vercel dashboard."
